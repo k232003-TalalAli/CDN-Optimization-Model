@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CDN Optimization Dashboard · {{ prof.location }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body data-sid="{{ sid }}">
+  <header class="topbar">
+    <h1>CDN OPTIMIZATION DASHBOARD</h1>
+    <div class="topbar-right">
+      <span id="netStatus" class="status-pill">connecting</span>
+      <span class="muted">User:</span> <strong>{{ prof.location }}</strong>
+      <a class="link" href="{{ url_for('index') }}">Change</a>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" hidden></div>
+
+  <main class="grid">
+    <section class="card span-12">
+      <h2>User profile</h2>
+      <div class="profile">
+        <div><span class="label">Location</span><span class="value">{{ prof.location }}</span></div>
+        <div><span class="label">User host</span><span class="value mono">{{ prof.host }}</span></div>
+        <div><span class="label">Address</span><span class="value mono">{{ prof.ip }}</span></div>
+        <div class="grow"><span class="label">Network path (Dijkstra)</span><span id="pathText" class="value mono">–</span></div>
+      </div>
+    </section>
+
+    <section class="card span-6">
+      <h2>Current CDN server</h2>
+      <div class="row">
+        <fieldset class="segmented" aria-label="Optimization mode">
+          <legend class="label">Optimization mode</legend>
+          <label><input type="radio" name="cdnmode" value="auto" checked><span>Automatic</span></label>
+          <label><input type="radio" name="cdnmode" value="manual"><span>Manual</span></label>
+        </fieldset>
+        <div class="stack">
+          <label class="label" for="cdnSelect">Server</label>
+          <select id="cdnSelect" class="field">
+            {% for code, name in locations.items() %}<option value="{{ code }}">{{ name }} CDN</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <div id="switchNote" class="note" hidden></div>
+      <div class="tiles">
+        <div class="tile"><span class="label">Latency</span><span><b id="mLatency">–</b><i>ms</i></span></div>
+        <div class="tile"><span class="label">Available bandwidth</span><span><b id="mBw">–</b><i>Mbps</i></span><small id="mCap" class="muted"></small></div>
+        <div class="tile"><span class="label">Current throughput</span><span><b id="mThr">–</b><i>Mbps</i></span></div>
+        <div class="tile"><span class="label">Server load</span><span><b id="mLoad">–</b><i>%</i></span></div>
+        <div class="tile"><span class="label">Optimization score</span><span><b id="mScore">–</b></span><small class="muted">lower is better</small></div>
+      </div>
+    </section>
+
+    <section class="card span-6">
+      <h2>Content</h2>
+      <div class="stack">
+        <label class="label" for="contentSelect">File</label>
+        <select id="contentSelect" class="field"></select>
+        <div id="contentMeta" class="muted small">–</div>
+      </div>
+      <div class="row quality">
+        <fieldset class="segmented" aria-label="Video quality mode">
+          <legend class="label">Video quality</legend>
+          <label><input type="radio" name="qmode" value="auto" checked><span>Automatic</span></label>
+          <label><input type="radio" name="qmode" value="manual"><span>Manual</span></label>
+        </fieldset>
+        <div class="stack">
+          <label class="label" for="qualitySelect">Quality</label>
+          <select id="qualitySelect" class="field"></select>
+        </div>
+      </div>
+      <div id="qualityNote" class="note" hidden></div>
+      <div class="actions">
+        <button id="btnStream" class="btn primary">Stream</button>
+        <button id="btnDownload" class="btn">Download</button>
+      </div>
+    </section>
+
+    <section id="playback" class="card span-12" hidden>
+      <h2>Last request</h2>
+      <div class="playback">
+        <div id="player" class="player"></div>
+        <div class="decision">
+          <dl id="decisionList"></dl>
+          <p id="decisionReason" class="muted small"></p>
+          <div id="decisionWarn" class="note warn" hidden></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card span-12">
+      <div class="card-head">
+        <h2>CDN server comparison</h2>
+        <div id="legend" class="legend"></div>
+      </div>
+      <div class="table-wrap">
+        <table id="serverTable">
+          <thead><tr>
+            <th>Server</th><th class="num">Latency</th><th class="num">Available BW</th>
+            <th class="num">Throughput</th><th class="num">Load</th><th class="num">Path</th>
+            <th class="num">Score</th><th class="breakdown-col">Score breakdown</th><th>Status</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="legend-inline small muted" id="scoreKey">
+        <span><i class="sw s-latency"></i>Latency 40%</span>
+        <span><i class="sw s-bandwidth"></i>Bandwidth 30%</span>
+        <span><i class="sw s-load"></i>Load 20%</span>
+        <span><i class="sw s-path"></i>Path 10%</span>
+      </div>
+    </section>
+
+    <section class="card span-12">
+      <h2>Live network metrics</h2>
+      <div class="charts">
+        <figure><figcaption>Latency (ms)</figcaption><canvas id="chLatency"></canvas></figure>
+        <figure><figcaption>Current throughput (Mbps)</figcaption><canvas id="chThr"></canvas></figure>
+        <figure><figcaption>Available bandwidth (Mbps)</figcaption><canvas id="chBw"></canvas></figure>
+      </div>
+    </section>
+
+    <section class="card span-6">
+      <h2>Congestion generator</h2>
+      <p class="muted small">Starts real iperf3 UDP traffic out of a CDN host. New requests then re-route automatically.</p>
+      <div class="row">
+        <div class="stack">
+          <label class="label" for="congCdn">CDN server</label>
+          <select id="congCdn" class="field">
+            {% for code, name in locations.items() %}<option value="{{ code }}">{{ name }} CDN</option>{% endfor %}
+          </select>
+        </div>
+        <div class="stack grow">
+          <label class="label" for="congMbps">Traffic <output id="congOut">0</output> Mbps of <span id="congUplink">–</span></label>
+          <input id="congMbps" type="range" min="0" max="50" step="1" value="0">
+        </div>
+      </div>
+      <div class="actions wrap">
+        <button class="btn small-btn" data-leave="9">Leave ~9 Mbps</button>
+        <button class="btn small-btn" data-leave="6">Leave ~6 Mbps</button>
+        <button class="btn small-btn" data-leave="2">Leave ~2 Mbps</button>
+        <button id="congStart" class="btn primary small-btn">Start</button>
+        <button id="congStop" class="btn small-btn">Stop all</button>
+      </div>
+      <div id="congStatus" class="small muted">No background traffic.</div>
+    </section>
+
+    <section class="card span-6">
+      <h2>Recent requests (all users)</h2>
+      <div id="recent" class="recent muted small">No requests yet.</div>
+    </section>
+  </main>
+
+  <footer class="foot small muted">Mininet link rates run at <span id="scaleNote">0.1×</span> the nominal capacity. Metrics come from ping, interface counters and process stats inside the network.</footer>
+  <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+</body>
+</html>
